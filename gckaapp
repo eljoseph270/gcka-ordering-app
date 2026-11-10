@@ -1,0 +1,270 @@
+import streamlit as st
+import datetime
+import pandas as pd
+
+# ==============================================================================
+# FBLA COMPETITION PROJECT: GCKA ORDERING SYSTEM
+# ARCHITECTURE: Python Streamlit Application
+# BEST PRACTICE: High modularity, local variable scoping, clear data structures.
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. APPLICATION SETUP & PAGE CONFIGURATION
+# ------------------------------------------------------------------------------
+st.set_page_config(
+    page_title="GCKA Ordering Portal",
+    page_icon="🧁",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
+
+# Initialize Session States (In-Memory Database for Cart and Orders)
+if "cart" not in st.session_state:
+    st.session_state.cart = []
+if "orders_db" not in st.session_state:
+    # Pre-populating historical data for admin reporting demo
+    st.session_state.orders_db = [
+        {
+            "order_id": "GCKA-1001",
+            "date": datetime.date(2026, 11, 1),
+            "customer": "Sarah Jenkins",
+            "category": "Cupcakes",
+            "item_name": "Chocolate Silk Cupcake",
+            "quantity": 2,
+            "total_val": 8.00,
+            "status": "Completed"
+        },
+        {
+            "order_id": "GCKA-1002",
+            "date": datetime.date(2026, 11, 5),
+            "customer": "Michael Chang",
+            "category": "Tarts",
+            "item_name": "Zesty Lemon Tart",
+            "quantity": 3,
+            "total_val": 15.00,
+            "status": "Completed"
+        },
+        {
+            "order_id": "GCKA-1003",
+            "date": datetime.date(2026, 11, 8),
+            "customer": "Emily Davis",
+            "category": "Specialty",
+            "item_name": "Gluten-Free Fudge Brownie",
+            "quantity": 4,
+            "total_val": 20.00,
+            "status": "In Progress"
+        }
+    ]
+
+# ------------------------------------------------------------------------------
+# 2. MASTER DATA CATALOG & FAQ DATA
+# ------------------------------------------------------------------------------
+CATALOG = {
+    101: {
+        "name": "Chocolate Silk Cupcake",
+        "category": "Cupcakes",
+        "price": 4.00,
+        "flavor": "Chocolate",
+        "dietary": "Nut-Free",
+        "ingredients": "Flour, Cocoa Powder, Sugar, Eggs, Butter, Cream Cheese",
+        "description": "Rich dark chocolate sponge topped with silky chocolate buttercream."
+    },
+    102: {
+        "name": "Zesty Lemon Tart",
+        "category": "Tarts",
+        "price": 5.00,
+        "flavor": "Citrus",
+        "dietary": "Vegetarian",
+        "ingredients": "Pastry Shell, Fresh Lemons, Butter, Sugar, Eggs",
+        "description": "Tangy lemon curd filling in a crisp butter pastry shell."
+    },
+    103: {
+        "name": "Gluten-Free Fudge Brownie",
+        "category": "Specialty",
+        "price": 5.00,
+        "flavor": "Chocolate",
+        "dietary": "Gluten-Free",
+        "ingredients": "Almond Flour, Dark Chocolate, Cocoa, Honey, Butter",
+        "description": "Decadent fudge brownie made certified gluten-free."
+    },
+    104: {
+        "name": "Strawberry Shortcake Slice",
+        "category": "Cakes",
+        "price": 6.50,
+        "flavor": "Fruity",
+        "dietary": "Nut-Free",
+        "ingredients": "Sponge Cake, Fresh Strawberries, Vanilla Cream",
+        "description": "Light vanilla sponge layered with fresh strawberries and whipped cream."
+    },
+    105: {
+        "name": "Vegan Cinnamon Roll",
+        "category": "Specialty",
+        "price": 4.50,
+        "flavor": "Spice",
+        "dietary": "Vegan",
+        "ingredients": "Oat Milk, Cinnamon, Organic Sugar, Plant Butter",
+        "description": "Warm fluffy roll swirled with cinnamon brown sugar and plant icing."
+    }
+}
+
+FAQ_DATA = [
+    {
+        "q": "What is GCKA's ordering policy?",
+        "a": "Orders must be placed at least 24 hours in advance for fresh preparation."
+    },
+    {
+        "q": "Do you accommodate food allergies?",
+        "a": "Yes! All products clearly label Nut-Free, Gluten-Free, or Vegan status."
+    },
+    {
+        "q": "Where do I pick up my order?",
+        "a": "Pickups are handled at our GCKA Main Hub or Express Drive-thru Window."
+    },
+    {
+        "q": "What payment methods are accepted?",
+        "a": "We accept major credit/debit cards and mobile payments upon order completion."
+    }
+]
+
+LOCATIONS = ["GCKA Main Center - 101 Community Way", "GCKA North Branch - 500 Park Ave", "Express Pickup Kiosk - Downtown"]
+
+# ------------------------------------------------------------------------------
+# 3. CORE LOGIC & CALCULATION FUNCTIONS (Demonstrates Proper Variable Scope)
+# ------------------------------------------------------------------------------
+
+def calculate_totals(cart_items, promo_code="", tax_rate=0.07):
+    """
+    Demonstrates Good Variable Scope:
+    Keeps calculation variables (subtotal, discount, tax) contained 
+    inside the function scope and returns only the finalized results.
+    """
+    # Local scope calculation variables
+    raw_subtotal = sum(item["price"] * item["qty"] for item in cart_items)
+    
+    # Calculate discount
+    discount_rate = 0.10 if promo_code.upper() == "GCKA10" else 0.00
+    discount_amount = raw_subtotal * discount_rate
+    
+    discounted_subtotal = raw_subtotal - discount_amount
+    tax_amount = discounted_subtotal * tax_rate
+    grand_total = discounted_subtotal + tax_amount
+
+    return {
+        "subtotal": round(raw_subtotal, 2),
+        "discount": round(discount_amount, 2),
+        "tax": round(tax_amount, 2),
+        "total": round(grand_total, 2)
+    }
+
+def filter_catalog(catalog, selected_category, max_price, selected_flavor, selected_dietary):
+    """Filters products dynamically based on search controls."""
+    filtered = {}
+    for p_id, item in catalog.items():
+        cat_match = (selected_category == "All") or (item["category"] == selected_category)
+        price_match = item["price"] <= max_price
+        flavor_match = (selected_flavor == "All") or (item["flavor"] == selected_flavor)
+        dietary_match = (selected_dietary == "All") or (item["dietary"] == selected_dietary)
+        
+        if cat_match and price_match and flavor_match and dietary_match:
+            filtered[p_id] = item
+    return filtered
+
+def validate_checkout_info(name, email, phone):
+    """Intelligent Checkout Validation."""
+    errors = []
+    if len(name.strip()) < 2:
+        errors.append("Please enter a valid full name.")
+    if "@" not in email or "." not in email:
+        errors.append("Please enter a valid email address.")
+    if len(phone.replace("-", "").strip()) < 10:
+        errors.append("Please enter a valid 10-digit phone number.")
+    return len(errors) == 0, errors
+
+
+# ------------------------------------------------------------------------------
+# 4. USER INTERFACE TABS
+# ------------------------------------------------------------------------------
+
+st.title("🧁 GCKA Smart Ordering Platform")
+st.caption("Official FBLA Interactive Desktop & Web Application")
+
+# Navigation Tabs
+tab_shop, tab_quiz, tab_cart, tab_status, tab_faq, tab_reports = st.tabs([
+    "🛍️ Catalog & Smart Finder",
+    "🍰 Dessert Quiz",
+    "🛒 Cart & Checkout",
+    "📦 Order Confirmation & Status",
+    "❓ Interactive FAQ",
+    "📊 Reports & Analytics"
+])
+
+# ------------------------------------------------------------------------------
+# TAB 1: BROWSE PRODUCTS & SMART PRODUCT FINDER
+# ------------------------------------------------------------------------------
+with tab_shop:
+    st.subheader("Smart Product Finder & Catalog")
+    
+    # Filter Sidebar / Controls
+    f_col1, f_col2, f_col3, f_col4 = st.columns(4)
+    with f_col1:
+        cat_filter = st.selectbox("Category", ["All", "Cupcakes", "Tarts", "Cakes", "Specialty"])
+    with f_col2:
+        flavor_filter = st.selectbox("Flavor Profile", ["All", "Chocolate", "Citrus", "Fruity", "Spice"])
+    with f_col3:
+        diet_filter = st.selectbox("Dietary Preference", ["All", "Nut-Free", "Vegetarian", "Gluten-Free", "Vegan"])
+    with f_col4:
+        price_filter = st.slider("Max Price (\$)", 3.0, 10.0, 10.0, step=0.5)
+
+    filtered_items = filter_catalog(CATALOG, cat_filter, price_filter, flavor_filter, diet_filter)
+    
+    st.markdown("---")
+    if not filtered_items:
+        st.warning("No products match your selected filters.")
+    else:
+        grid_cols = st.columns(3)
+        for idx, (p_id, item) in enumerate(filtered_items.items()):
+            with grid_cols[idx % 3]:
+                with st.container(border=True):
+                    st.markdown(f"### {item['name']}")
+                    st.markdown(f"**Price:** `${item['price']:.2f}` | **Category:** {item['category']}")
+                    st.write(item["description"])
+                    st.info(f"🌿 **Dietary:** {item['dietary']} | 🍋 **Flavor:** {item['flavor']}")
+                    
+                    with st.expander("📋 View Ingredients"):
+                        st.write(item["ingredients"])
+                        
+                    qty = st.number_input("Quantity", min_value=1, max_value=20, value=1, key=f"qty_{p_id}")
+                    if st.button("Add to Cart 🛒", key=f"add_{p_id}"):
+                        st.session_state.cart.append({
+                            "id": p_id,
+                            "name": item["name"],
+                            "price": item["price"],
+                            "qty": qty,
+                            "category": item["category"]
+                        })
+                        st.success(f"Added {qty}x {item['name']} to cart!")
+
+# ------------------------------------------------------------------------------
+# TAB 2: PERSONALIZED DESSERT QUIZ
+# ------------------------------------------------------------------------------
+with tab_quiz:
+    st.subheader("🍰 Personalized Dessert Recommendation Quiz")
+    st.write("Not sure what to order? Take our 3-question quiz to find your match!")
+    
+    q1 = st.radio("1. What kind of taste are you craving today?", ["Sweet & Rich Chocolate", "Fresh & Fruity", "Warm & Spiced"])
+    q2 = st.radio("2. Do you have any dietary restrictions?", ["None", "Gluten-Free", "Vegan", "Nut-Free"])
+    q3 = st.radio("3. What is the occasion?", ["Casual Treat", "Celebration / Party", "Quick Afternoon Snack"])
+
+    if st.button("Find My Match ✨"):
+        recommended_id = 101 # default
+        if "Chocolate" in q1:
+            recommended_id = 103 if q2 == "Gluten-Free" else 101
+        elif "Fruity" in q1 or "Fresh" in q1:
+            recommended_id = 102 if "Citrus" in q1 else 104
+        elif "Spiced" in q1 or q2 == "Vegan":
+            recommended_id = 105
+            
+        match = CATALOG[recommended_id]
+        st.balloons()
+        st.success(f"🎉 Your Perfect Match is: **{match['name']}**!")
+        st.write(f"**Why you'
